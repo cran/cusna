@@ -1,0 +1,8 @@
+# cusna native engine -- CPU-only build (Windows / Rtools; the CRAN default).
+# See src/Makevars for the full notes and the GPU-path recipe. R compiles every
+# .cpp in src/ and links them into cusna.dll; the vendored libcusna_saom_cpu.cpp
+# is pure C++ (no CUDA) and needs only the Rtools gcc toolchain.
+CXX_STD = CXX17
+PKG_CPPFLAGS = -I. -DLIBCUSNA_BUILD -DCUSNA_CPU_ONLY
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS)

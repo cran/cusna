@@ -1,0 +1,70 @@
+---
+title: "Accelerating siena07() with cusna"
+output: litedown::html_format
+vignette: >
+  %\VignetteEngine{litedown::vignette}
+  %\VignetteIndexEntry{Accelerating siena07() with cusna}
+  %\VignetteEncoding{UTF-8}
+---
+
+Besides the standalone estimator (`vignette("cusna")`), `cusna` can serve as
+an *acceleration backend* for
+[RSiena](https://cran.r-project.org/package=RSiena): the native simulator
+replaces RSiena's inner simulation loop, while RSiena keeps its full
+Robbins--Monro estimation machinery --- and hence its convergence behavior.
+Nothing in RSiena is forked or patched.
+
+This is a useful path for hard, nearly collinear specifications, where a
+standalone method-of-moments run may not converge from a cold start: RSiena
+supplies convergence, cusna supplies speed.
+
+The code below is shown but not run here (it needs the RSiena package).
+
+## The FRAN hook
+
+RSiena's `siena07()` calls a simulation function named `FRAN` once per
+Robbins--Monro iteration. If `alg$FRAN` is a function, RSiena uses it
+directly. `cusna_fran()` builds such a function over the native simulator:
+
+```{r, eval=FALSE}
+library(cusna)
+library(RSiena)
+
+# ... assemble `dat` (sienaData) and `eff` (sienaEffects) as usual ...
+
+alg <- sienaAlgorithmCreate(projname = NULL, cond = FALSE)
+
+alg$FRAN <- cusna_fran(
+  waves        = list(w1, w2, w3),                  # the same 0/1 wave matrices
+  effect_names = c("density", "recip", "transTrip"),# in the RSiena effects order
+  conditional  = FALSE)                             # must match `cond`
+
+ans <- siena07(alg, data = dat, effects = eff, useCluster = FALSE)
+ans   # a normal sienaFit: estimates, standard errors, convergence as usual
+```
+
+The `effect_names` must list the included effects in the same order as the
+rows of the RSiena effects object, and `conditional` must match the
+algorithm's `cond` setting. Covariate effects (`egoX`/`altX`/`simX`/`sameX`)
+read the `covariate` argument.
+
+## Scope
+
+* The closure simulates on the compiled native engine (CPU in the CRAN
+  build) --- no Python, no GPU required.
+* One simulation is produced per call, matching RSiena's `simstats0c`
+  contract; batching happens across Robbins--Monro iterations, not within a
+  call.
+* The current bridge covers the structural and single-covariate effects named
+  in `effect_names`; mapping an arbitrary `siena07` effects object (multiple
+  covariates, behavior co-evolution) onto the native descriptors is under
+  development. For those models, use the standalone `mom_estimate()`.
+
+## Which path to choose
+
+| Situation | Recommended path |
+|---|---|
+| Well-conditioned model, want maximum speed | standalone `mom_estimate()` |
+| Nearly collinear / hard convergence | `cusna_fran()` + `siena07()` |
+| Need RSiena's exact estimator semantics | `cusna_fran()` + `siena07()` |
+| Behavior co-evolution, multi-network | standalone `mom_estimate()` / `mom_estimate_multinet()` |

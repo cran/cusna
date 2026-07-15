@@ -1,0 +1,19 @@
+# cusna native engine -- CPU-only build (the CRAN default).
+#
+# R compiles every .cpp in src/ (cpp11.cpp, cusna_glue.cpp and the configure-
+# vendored libcusna_saom_cpu.cpp) and links them into cusna.so. The exposed A5
+# host statistics are pure C++ (no CUDA); OpenMP parallelises the batch loops.
+# LIBCUSNA_BUILD selects the local (exported) linkage for the statically linked
+# ABI functions in libcusna.h.
+#
+# GPU path (optional, NOT built by default): when a CUDA 12.x toolkit is present,
+# compile the vendored libcusna_saom.cu with nvcc (-arch=sm_XX --fmad=true,
+# -prec-div=true -prec-sqrt=true, and crucially NO --use_fast_math -- see
+# native/DESIGN.md 1.1) into libcusna_saom.o, add -DCUSNA_WITH_CUDA to
+# PKG_CPPFLAGS and -lcudart to PKG_LIBS. The exposed A5 functions are all CPU, so
+# the CPU-only build is fully functional; the GPU path is wired in as the
+# simulator/estimator R API is exposed.
+CXX_STD = CXX17
+PKG_CPPFLAGS = -I. -DLIBCUSNA_BUILD -DCUSNA_CPU_ONLY
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS)

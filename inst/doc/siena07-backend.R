@@ -1,15 +1,24 @@
+# CRAN's two-core policy: run the OpenMP engine single-threaded here.
 library(cusna)
+old_threads <- cusna_set_threads(1L)
+have_rsiena <- requireNamespace("RSiena", quietly = TRUE)
+
 library(RSiena)
 
-# ... assemble `dat` (sienaData) and `eff` (sienaEffects) as usual ...
+net <- sienaDependent(array(unlist(s50$waves), dim = c(50, 50, 3)))
+dat <- sienaDataCreate(net)
+eff <- includeEffects(getEffects(dat), transTrip)
 
-alg <- sienaAlgorithmCreate(projname = NULL, cond = FALSE)
-
+alg <- sienaAlgorithmCreate(projname = NULL, nsub = 2, n3 = 300, seed = 2026)
 alg$FRAN <- cusna_fran(
-  waves        = list(w1, w2, w3),                  # the same 0/1 wave matrices
+  waves        = s50$waves,                         # the same 0/1 wave matrices
   effect_names = c("density", "recip", "transTrip"),# in the RSiena effects order
-  conditional  = FALSE)                             # must match `cond`
+  conditional  = TRUE)                              # must match `cond`
 
-ans <- siena07(alg, data = dat, effects = eff, useCluster = FALSE)
-ans   # a normal sienaFit: estimates, standard errors, convergence as usual
+ans <- siena07(alg, data = dat, effects = eff, batch = TRUE,
+               verbose = FALSE, silent = TRUE, useCluster = FALSE)
+ans                              # a normal sienaFit
+attr(alg$FRAN, "counter")$i      # simulation calls made by siena07()
+
+cusna_set_threads(old_threads)
 

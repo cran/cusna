@@ -58,9 +58,9 @@ test_that("cusna_fran returns a working FRAN closure (simstats0c contract)", {
   expect_true(is.function(fran))
   r <- fran(list(theta = c(-2, 1)), NULL)
   expect_true(r$OK)
-  expect_length(r$fra, 2)            # conditional: one stat per eval effect
-  expect_equal(dim(r$sc), c(1L, 2L))
-  expect_length(r$ntim0, 2)          # one duration per period
+  expect_equal(dim(r$fra), c(2L, 2L))  # periods x eval effects (conditional)
+  expect_equal(dim(r$sc), c(2L, 2L))
+  expect_length(r$ntim0, 2)            # one duration per period
 })
 
 test_that("mom_estimate produces a cusna_fit with working methods", {

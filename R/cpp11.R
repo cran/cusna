@@ -48,8 +48,8 @@ cusna_alaam_gibbs_cpu_ <- function(a, n, directed, y0, X, p, beta0, beta_c, beta
   .Call(`_cusna_cusna_alaam_gibbs_cpu_`, a, n, directed, y0, X, p, beta0, beta_c, beta_x, C, seed, sweeps)
 }
 
-cusna_ergm_sim_masked_cpu_ <- function(a, permitted, n, k, directed, theta, type_ids, parm, attr, C, seed, burnin, interval, samplesize) {
-  .Call(`_cusna_cusna_ergm_sim_masked_cpu_`, a, permitted, n, k, directed, theta, type_ids, parm, attr, C, seed, burnin, interval, samplesize)
+cusna_ergm_sim_masked_cpu_ <- function(a, permitted, n, k, directed, theta, type_ids, parm, attr, C, seed, burnin, interval, samplesize, return_nets) {
+  .Call(`_cusna_cusna_ergm_sim_masked_cpu_`, a, permitted, n, k, directed, theta, type_ids, parm, attr, C, seed, burnin, interval, samplesize, return_nets)
 }
 
 cusna_simulate_period_cpu_ <- function(n, k, M, seed, x0, lam, theta, type_ids, etypes, dyn_flags, dyc_idx, vmat, wtab, vb, p1, p2, vmiss, maxdegree, conditional, target_dist, symflag, kb, lamb, thetab, bty, z0, bkdist, zmin, zmax, zbar, brange, bsimmean, want_ends) {

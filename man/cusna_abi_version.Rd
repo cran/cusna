@@ -12,7 +12,11 @@ An integer (\code{cusna_abi_version}) or logical (\code{cusna_has_cuda}).
 }
 \description{
 \code{cusna_abi_version()} returns the C ABI version compiled into the package.
-\code{cusna_has_cuda()} returns \code{TRUE} when the package was built with the
-GPU path (a CUDA toolkit was detected at configure time) and a usable device is
-present; the CRAN CPU-only build always returns \code{FALSE}.
+\code{cusna_has_cuda()} returns \code{TRUE} only for a build that links the
+CUDA backend of the engine and finds a usable device; the R package builds the
+CPU backend, so it returns \code{FALSE}.
+}
+\examples{
+cusna_abi_version()
+cusna_has_cuda()
 }

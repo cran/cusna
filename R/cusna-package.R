@@ -1,10 +1,9 @@
-#' cusna: native GPU-accelerated stochastic actor-oriented models
+#' cusna: native simulation and estimation of network models
 #'
-#' A self-contained native engine (C ABI over CUDA kernels and C++ host logic)
-#' for SAOM/RSiena and ERGM, callable from R without a Python runtime. Modelled
-#' on the \pkg{torch} package: the CRAN build is CPU-only from source, and the
-#' GPU path is compiled from source when a CUDA toolkit is detected at configure
-#' time (\code{cusna_has_cuda()} reports which build you have).
+#' A self-contained native engine (a C interface over C++ host logic) for
+#' SAOM/RSiena and ERGM, callable from R without a Python runtime. The package
+#' builds the CPU backend of the engine (C++17, OpenMP); a CUDA backend
+#' implements the same interface and is built separately from source.
 #'
 #' Milestone A5 exposes the validated host statistics -- the RSiena Appendix B
 #' convention carriers (\code{cusna_network_stats}, \code{cusna_behavior_stats},
@@ -17,6 +16,11 @@
 "_PACKAGE"
 
 .onLoad <- function(libname, pkgname) {
+  # CRAN checks may use at most two cores; R CMD check --as-cran signals this
+  # with _R_CHECK_LIMIT_CORES_, so cap the OpenMP team for examples, tests and
+  # vignettes run under it.
+  lim <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
+  if (nzchar(lim) && !identical(tolower(lim), "false")) cusna_set_num_threads_(2L)
   invisible(NULL)
 }
 

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<meta name="generator" content="litedown 0.9">
+<meta name="generator" content="litedown 0.11">
 <title>Accelerating siena07() with cusna</title>
 <style type="text/css">
 body {
@@ -45,9 +45,9 @@ div > .caption { padding: 1px 1em; }
 table {
   &:only-child:not(.table > *) { margin: auto; }
   th, td { padding: 5px; font-variant-numeric: tabular-nums; }
-  thead, tfoot, tr:nth-child(even) { background: whitesmoke; }
-  thead th { border-bottom: 1px solid #ddd; }
-  &:not(.datatable-table) {
+  &:not([class]) {
+    thead, tfoot, tr:nth-child(even) { background: whitesmoke; }
+    thead th { border-bottom: 1px solid #ddd; }
     border-top: 1px solid #666;
     border-bottom: 1px solid #666;
   }
@@ -62,7 +62,7 @@ hr, .footnotes::before { border: 1px dashed #ddd; }
 .frontmatter { text-align: center; }
 #TOC {
   a { text-decoration: none; }
-  ul { list-style: none; padding-left: 1em; }
+  ul { list-style: none; padding-left: 1em; columns: 24em; }
   & > ul { padding: 0; }
   ul ul { border-left: 1px solid lightsteelblue; }
 }
@@ -73,6 +73,7 @@ span[class^="ref-number-"] { font-weight: bold; }
 .ref-number-fig::after, .ref-number-tab::after { content: ":"; }
 .cross-ref-chp::before { content: "Chapter "; }
 .cross-ref-sec::before { content: "Section "; }
+.cross-ref-apd::before { content: "Appendix "; }
 .cross-ref-fig::before, .ref-number-fig::before { content: "Figure "; }
 .cross-ref-tab::before, .ref-number-tab::before { content: "Table "; }
 .cross-ref-eqn::before, .MathJax_ref:has(mjx-mtext > mjx-c + mjx-c)::before { content: "Equation "; }
@@ -98,7 +99,10 @@ section.footnotes {
   background: repeating-linear-gradient(135deg, white, white 30px, #ddd 32px, #ddd 32px);
   opacity: 0.6;
 }
-
+@media (prefers-color-scheme: dark) {
+  html, img, video, iframe { filter: invert(1); }
+  body { background: #ededed; }
+}
 @media print {
   body { max-width: 100%; }
   tr, img { break-inside: avoid; }
@@ -107,7 +111,7 @@ section.footnotes {
   body:not(.pagesjs) pre:has(.line-numbers):not(:hover) { white-space: pre; }
 }
 </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xiee/utils@1.14.64/css/prism-xcode.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xiee/utils@1.14.126/css/prism-xcode.min.css">
 </head>
 <body>
 <div class="frontmatter">
@@ -123,34 +127,73 @@ Nothing in RSiena is forked or patched.</p>
 <p>This is a useful path for hard, nearly collinear specifications, where a
 standalone method-of-moments run may not converge from a cold start: RSiena
 supplies convergence, cusna supplies speed.</p>
-<p>The code below is shown but not run here (it needs the RSiena package).</p>
+<p>The chunks below run when RSiena is installed (it is a suggested package).</p>
 <h2 id="sec:the-fran-hook">The FRAN hook</h2>
 <p>RSiena’s <code>siena07()</code> calls a simulation function named <code>FRAN</code> once per
 Robbins–Monro iteration. If <code>alg$FRAN</code> is a function, RSiena uses it
-directly. <code>cusna_fran()</code> builds such a function over the native simulator:</p>
-<pre><code class="language-r">library(cusna)
-library(RSiena)
+directly. <code>cusna_fran()</code> builds such a function over the native simulator.
+Here it estimates the s50 friendship panel shipped with cusna:</p>
+<pre><code class="language-r">library(RSiena)
 
-# ... assemble `dat` (sienaData) and `eff` (sienaEffects) as usual ...
-
-alg &lt;- sienaAlgorithmCreate(projname = NULL, cond = FALSE)
-
-alg$FRAN &lt;- cusna_fran(
-  waves        = list(w1, w2, w3),                  # the same 0/1 wave matrices
-  effect_names = c(&quot;density&quot;, &quot;recip&quot;, &quot;transTrip&quot;),# in the RSiena effects order
-  conditional  = FALSE)                             # must match `cond`
-
-ans &lt;- siena07(alg, data = dat, effects = eff, useCluster = FALSE)
-ans   # a normal sienaFit: estimates, standard errors, convergence as usual
+net &lt;- sienaDependent(array(unlist(s50$waves), dim = c(50, 50, 3)))
+dat &lt;- sienaDataCreate(net)
+eff &lt;- includeEffects(getEffects(dat), transTrip)
 </code></pre>
-<p>The <code>effect_names</code> must list the included effects in the same order as the
-rows of the RSiena effects object, and <code>conditional</code> must match the
-algorithm’s <code>cond</code> setting. Covariate effects (<code>egoX</code>/<code>altX</code>/<code>simX</code>/<code>sameX</code>)
-read the <code>covariate</code> argument.</p>
+<pre><code>#&gt;   effectNumber effectName          shortName include fix   test  initialValue
+#&gt; 1 21           transitive triplets transTrip TRUE    FALSE FALSE          0  
+#&gt;   parm
+#&gt; 1 0   
+</code></pre>
+<pre><code class="language-r">alg &lt;- sienaAlgorithmCreate(projname = NULL, nsub = 2, n3 = 300, seed = 2026)
+</code></pre>
+<pre><code>#&gt; If you use this algorithm object, siena07 will create/use an output file Siena.txt .
+</code></pre>
+<pre><code class="language-r">alg$FRAN &lt;- cusna_fran(
+  waves        = s50$waves,                         # the same 0/1 wave matrices
+  effect_names = c(&quot;density&quot;, &quot;recip&quot;, &quot;transTrip&quot;),# in the RSiena effects order
+  conditional  = TRUE)                              # must match `cond`
+
+ans &lt;- siena07(alg, data = dat, effects = eff, batch = TRUE,
+               verbose = FALSE, silent = TRUE, useCluster = FALSE)
+ans                              # a normal sienaFit
+</code></pre>
+<pre><code>#&gt; Estimates, standard errors and convergence t-ratios
+#&gt; 
+#&gt;                                    Estimate   Standard   Convergence 
+#&gt;                                                 Error      t-ratio   
+#&gt; 
+#&gt; Rate parameters: 
+#&gt;   0.1      Rate parameter period 1  6.3824  ( 1.0321   )             
+#&gt;   0.2      Rate parameter period 2  5.1734  ( 0.9202   )             
+#&gt; 
+#&gt; Other parameters: 
+#&gt;   1.  eval outdegree (density)     -2.6572  ( 0.1141   )   0.1342    
+#&gt;   2.  eval reciprocity              2.4041  ( 0.2037   )   0.0269    
+#&gt;   3.  eval transitive triplets      0.6305  ( 0.0692   )   0.1210    
+#&gt; 
+#&gt; Overall maximum convergence ratio:    0.3035 
+#&gt; 
+#&gt; 
+#&gt; Total of 521 iteration steps.
+#&gt; 
+</code></pre>
+<pre><code class="language-r">attr(alg$FRAN, &quot;counter&quot;)$i      # simulation calls made by siena07()
+</code></pre>
+<pre><code>#&gt; [1] 521
+</code></pre>
+<p>(The short <code>nsub</code>/<code>n3</code> keep this vignette quick; use RSiena’s defaults in
+practice.) The <code>effect_names</code> must list the included effects in the same
+order as the rows of the RSiena effects object, and <code>conditional</code> must match
+the algorithm’s <code>cond</code> setting (RSiena conditions on the observed distances
+by default for a single network); the closure stops with an explanatory
+error when the parameter vector does not match. Covariate effects
+(<code>egoX</code>/<code>altX</code>/<code>simX</code>/<code>sameX</code>) read the <code>covariate</code> argument. Simulation
+seeds come from R’s random number stream, which <code>siena07()</code> initialises from
+the algorithm’s <code>seed</code>, so the run above is reproducible.</p>
 <h2 id="sec:scope">Scope</h2>
 <ul>
-<li>The closure simulates on the compiled native engine (CPU in the CRAN
-build) — no Python, no GPU required.</li>
+<li>The closure simulates on the compiled native engine (its CPU backend in
+the R package) — no Python, no GPU required.</li>
 <li>One simulation is produced per call, matching RSiena’s <code>simstats0c</code>
 contract; batching happens across Robbins–Monro iterations, not within a
 call.</li>
@@ -158,6 +201,9 @@ call.</li>
 in <code>effect_names</code>; mapping an arbitrary <code>siena07</code> effects object (multiple
 covariates, behavior co-evolution) onto the native descriptors is under
 development. For those models, use the standalone <code>mom_estimate()</code>.</li>
+<li>Simulated networks are not handed back to RSiena (<code>returnDeps</code>); for
+goodness of fit on the native engine, use
+<code>mom_estimate(..., return_nets = TRUE)</code>.</li>
 </ul>
 <h2 id="sec:which-path-to-choose">Which path to choose</h2>
 <table>

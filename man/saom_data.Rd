@@ -34,9 +34,9 @@ against the reference implementation on public datasets.
 \code{\link{saom_multinet_data}}.
 }
 \examples{
-set.seed(1)
-w1 <- matrix(as.integer(runif(400) < 0.1), 20, 20); diag(w1) <- 0L
-w2 <- w1; flip <- sample(400, 30); w2[flip] <- 1L - w2[flip]; diag(w2) <- 0L
-dat <- saom_data(list(w1, w2))
+dat <- saom_data(s50$waves)
 dat
+
+# with the co-evolving alcohol use as a dependent behavior
+saom_data(s50$waves, behavior = s50$alcohol)
 }

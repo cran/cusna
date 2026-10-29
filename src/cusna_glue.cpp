@@ -303,12 +303,17 @@ list cusna_alaam_gibbs_cpu_(integers a, int n, int directed, integers y0,
 // ERGM TNT simulate with a toggle-permitted (free) dyad mask (cusna_ergm_problem
 // ->permitted): like cusna_ergm_simulate_cpu_ but the chain toggles only the free
 // dyads (`permitted` is a dense n*n 0/1 row-major mask). s0 is computed internally
-// (standard terms). Returns the C*samplesize*k sampled statistics, row-major.
+// (standard terms). Returns the C*samplesize*k sampled statistics, row-major. When
+// return_nets != 0 the C final (masked) networks (a_ends, [C*n*n] uint8 row-major)
+// are captured too and the return value becomes list(stats = <as above>, nets =
+// <integers C*n*n row-major>); with return_nets == 0 the bare stats vector is
+// returned, preserving the historical (scalar) call.
 [[cpp11::register]]
-doubles cusna_ergm_sim_masked_cpu_(integers a, integers permitted, int n, int k,
-                                   int directed, doubles theta, integers type_ids,
-                                   doubles parm, doubles attr, int C, double seed,
-                                   int burnin, int interval, int samplesize) {
+SEXP cusna_ergm_sim_masked_cpu_(integers a, integers permitted, int n, int k,
+                                int directed, doubles theta, integers type_ids,
+                                doubles parm, doubles attr, int C, double seed,
+                                int burnin, int interval, int samplesize,
+                                int return_nets) {
   std::vector<uint8_t> ad(a.size()), pm(a.size());
   for (R_xlen_t i = 0; i < a.size(); ++i) {
     ad[i] = (uint8_t)(a[i] != 0);
@@ -330,10 +335,19 @@ doubles cusna_ergm_sim_masked_cpu_(integers a, integers permitted, int n, int k,
   p.permitted = pm.data();                  /* free-dyad mask (STERGM) */
 
   writable::doubles out((R_xlen_t)C * samplesize * k);
+  std::vector<uint8_t> aends;
   cusna_ergm_result r{};
   r.struct_version = cusna_abi_version();
   r.stats = REAL(out);
+  if (return_nets) {
+    aends.assign((size_t)C * n * n, 0);
+    r.a_ends = aends.data();
+  }
   cusna_status st = cusna_ergm_tnt_sample_cpu(&p, &r);
   if (st != CUSNA_OK) stop("cusna_ergm_tnt_sample_cpu (masked) failed (status %d)", (int)st);
-  return out;
+  if (!return_nets) return (SEXP)out;
+  using namespace cpp11::literals;
+  writable::integers nets((R_xlen_t)C * n * n);
+  for (R_xlen_t i = 0; i < (R_xlen_t)C * n * n; ++i) nets[i] = (int)aends[i];
+  return (SEXP)writable::list({"stats"_nm = out, "nets"_nm = nets});
 }

@@ -46,19 +46,21 @@ support behavior co-evolution, interactions, or degree bounds.
 \code{\link{mom_estimate}}, \code{\link{cusna_effect}}.
 }
 \examples{
-# Building the container is plain R.
+# Friendship (the s50 waves) co-evolving with a second, synthetic network on
+# the same 50 actors.
 set.seed(11)
-mk <- function() { m <- matrix(as.integer(runif(400) < 0.1), 20, 20); diag(m) <- 0L; m }
-x1 <- mk(); x2 <- mk(); w1 <- mk(); w2 <- mk()
-dat <- saom_multinet_data(list(list(x1, x2), list(w1, w2)))
+second <- lapply(s50$waves, function(w) {
+  m <- w * (matrix(runif(2500), 50, 50) < 0.5); diag(m) <- 0L; m
+})
+dat <- saom_multinet_data(list(s50$waves, second))
 dat
-
-\dontrun{
-# Fitting drives the native multi-network simulator.
+\donttest{
+# A short schedule keeps the example quick; use the defaults in practice.
 fit <- mom_estimate_multinet(dat, effects_by_net = list(
   list(cusna_effect("density"), cusna_effect("recip")),
-  list(cusna_effect("density"), cusna_effect("recip"))
-))
+  list(cusna_effect("density"), cusna_effect("crprod", net_ref = 1))
+), control = mom_control(n1 = 150, nsub = 1, n2 = 10, batch2 = 40,
+                         nD = 150, n3 = 200, seed = 5))
 summary(fit)
 }
 }

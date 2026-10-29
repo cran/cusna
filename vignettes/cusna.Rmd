@@ -10,11 +10,10 @@ vignette: >
 `cusna` gives R a native, bit-reproducible engine for stochastic
 actor-oriented models (SAOM --- the model family of
 [RSiena](https://cran.r-project.org/package=RSiena)) and exponential random
-graph models. The engine is a C ABI over CUDA kernels and C++ host logic,
-compiled with the package --- **no Python runtime**. Following the design of
-the [`torch`](https://cran.r-project.org/package=torch) package, the CRAN
-build is CPU-only from source; the GPU path is compiled from source when a
-CUDA 12.x toolkit is detected at configure time.
+graph models. The engine is a small C interface over C++ host logic,
+compiled with the package --- **no Python runtime**. The package builds the
+engine's CPU backend (C++17, multi-threaded with OpenMP); a CUDA backend
+implements the same interface and is built separately from source.
 
 Because the engine ships inside the package, the estimation chunks in this
 vignette actually run (on small synthetic data, with reduced simulation
@@ -118,7 +117,7 @@ co-evolution adds a `behavior` matrix and behavior effects, and uses
 unconditional estimation (as in RSiena for more than one dependent variable):
 
 ```{r, eval=FALSE}
-dat <- saom_data(list(w1, w2, w3), behavior = drink)   # drink: n-by-waves
+dat <- saom_data(s50$waves, behavior = s50$alcohol)    # the bundled s50 panel
 
 fit <- mom_estimate(
   dat,
@@ -129,6 +128,27 @@ fit <- mom_estimate(
   beh_effects = list(cusna_beh_effect("linear"), cusna_beh_effect("quad"),
                      cusna_beh_effect("avSim")),
   conditional = FALSE)
+```
+
+### Simulated networks and goodness of fit
+
+With `return_nets = TRUE` the fit keeps the end networks of its phase-3
+simulations (RSiena's `returnDeps`): one chains-by-n-by-n array per period,
+the layout the native goodness-of-fit primitive `cusna_gof_distribution()`
+takes. Comparing the simulated and observed indegree distributions of the
+last wave:
+
+```{r}
+fit_gof <- mom_estimate(
+  dat,
+  effects = list(cusna_effect("density"), cusna_effect("recip")),
+  conditional = TRUE, return_nets = TRUE,
+  control = mom_control(n1 = 100, nsub = 1, n2 = 10, batch2 = 50, n3 = 200))
+sims <- fit_gof$sims[[2]]                       # period 2 ends at wave 3
+dim(sims)
+sim_indeg <- cusna_gof_distribution(sims, kind = 0L, levls = 0:4)
+obs_indeg <- cusna_gof_distribution(array(w3, c(1, n, n)), kind = 0L, levls = 0:4)
+rbind(observed = obs_indeg[1, ], simulated = colMeans(sim_indeg))
 ```
 
 Several dependent networks over one actor set co-evolve through
@@ -201,5 +221,5 @@ multi-network models. The ERGM samplers match `ergm::simulate`
 distributionally, and the ERGM/TERGM/STERGM/ALAAM estimators match
 `ergm`/`btergm`/`tergm`/`glm` on their benchmark models.
 
-An NVIDIA GPU is optional throughout: the CPU build compiles from source on
-any C++17 toolchain, and `cusna_has_cuda()` reports which build you have.
+No GPU is needed: the package compiles from source on any C++17 toolchain,
+and `cusna_has_cuda()` returns `FALSE` for it.

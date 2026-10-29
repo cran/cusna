@@ -261,3 +261,79 @@ test_that("stergm_cmle recovers the analytic edges-only formation/persistence ra
   expect_equal(unname(fit$dissolution$coef[["edges"]]),
                stats::qlogis(rate_d), tolerance = 0.3)
 })
+
+test_that("stergm_simulate respects the discord constraints on every draw", {
+  # y_t = (F \\ y_lag) union D : new ties only where absent at t-1 (the formation
+  # draw), surviving ties only where present at t-1 (the dissolution draw). So the
+  # composed net must equal y_lag on the fixed dyads of neither phase... concretely:
+  #   where y_lag == 1, no *new* tie can appear -> y_t[y_lag==1] is a subset of 1,
+  #   i.e. equals the dissolution draw restricted there and never exceeds y_lag;
+  #   where y_lag == 0, no persistence -> y_t[y_lag==0] equals the formation draw.
+  set.seed(301)
+  n <- 12L
+  y_lag <- matrix(as.integer(runif(n * n) < 0.3), n, n); diag(y_lag) <- 0L
+  terms <- list(ergm_term("edges"), ergm_term("mutual"))
+  sim <- stergm_simulate(y_lag, formation = terms,
+                         coef_formation = c(-1, 0.4),
+                         coef_dissolution = c(1.0, 0.2),
+                         nsim = 8, burnin = 1500L, seed = 11L)
+  expect_named(sim, c("stats_formation", "stats_dissolution", "nets"))
+  expect_length(sim$nets, 8L)
+  is1 <- y_lag == 1L; is0 <- y_lag == 0L
+  for (i in seq_len(8L)) {
+    yt <- sim$nets[[i]]
+    expect_equal(dim(yt), c(n, n))
+    expect_true(all(diag(yt) == 0L))
+    # ties surviving where present at t-1 are a subset of y_lag (no new tie added
+    # on an already-present dyad); ties formed where absent are all new (from F).
+    expect_true(all(yt[is1] <= 1L))
+    # a directly reconstructed formation net (F held at y_lag on the fixed dyads,
+    # = the composed net on the free dyads) must reproduce stats_formation[i, ];
+    # likewise the dissolution net (held at 0 on the fixed dyads).
+    Fi <- y_lag; Fi[is0] <- yt[is0]              # F: fixed = 1 (union), free = y_t
+    Di <- matrix(0L, n, n); Di[is1] <- yt[is1]   # D: fixed = 0 (inters.), free = y_t
+    diag(Fi) <- 0L; diag(Di) <- 0L
+    # constraint invariants (brief): new ties only where y_lag == 0, disappearances
+    # only where y_lag == 1.
+    expect_true(all(yt[is0] == Fi[is0]))
+    expect_true(all(yt[is1] == Di[is1]))
+    sF <- ergm_stats(Fi, terms, directed = TRUE)
+    sD <- ergm_stats(Di, terms, directed = TRUE)
+    expect_equal(unname(sF), unname(sim$stats_formation[i, ]))
+    expect_equal(unname(sD), unname(sim$stats_dissolution[i, ]))
+  }
+})
+
+test_that("stergm_simulate is reproducible seed-in-seed", {
+  set.seed(302)
+  n <- 10L
+  y_lag <- matrix(as.integer(runif(n * n) < 0.25), n, n); diag(y_lag) <- 0L
+  terms <- list(ergm_term("edges"), ergm_term("mutual"))
+  args <- list(y_lag, formation = terms, coef_formation = c(-1.5, 0.3),
+               coef_dissolution = c(0.8, 0.1), nsim = 6, burnin = 1000L, seed = 42L)
+  a <- do.call(stergm_simulate, args)
+  b <- do.call(stergm_simulate, args)
+  expect_identical(a$stats_formation, b$stats_formation)
+  expect_identical(a$stats_dissolution, b$stats_dissolution)
+  expect_identical(a$nets, b$nets)
+})
+
+test_that("stergm_simulate supports a nodematch cross term with attr", {
+  set.seed(303)
+  n <- 14L
+  y_lag <- matrix(as.integer(runif(n * n) < 0.25), n, n); diag(y_lag) <- 0L
+  grp <- rep(c(0, 1), length.out = n)
+  terms <- list(ergm_term("edges"), ergm_term("nodematch"))
+  sim <- stergm_simulate(y_lag, formation = terms,
+                         coef_formation = c(-1, 0.6),
+                         coef_dissolution = c(1.0, 0.4), attr = grp,
+                         nsim = 5, burnin = 1200L, seed = 7L)
+  expect_equal(colnames(sim$stats_formation), c("edges", "nodematch"))
+  is1 <- y_lag == 1L; is0 <- y_lag == 0L
+  for (i in seq_len(5L)) {
+    yt <- sim$nets[[i]]
+    Fi <- y_lag; Fi[is0] <- yt[is0]; diag(Fi) <- 0L
+    sF <- ergm_stats(Fi, terms, attr = grp, directed = TRUE)
+    expect_equal(unname(sF), unname(sim$stats_formation[i, ]))
+  }
+})

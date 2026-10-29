@@ -1,27 +1,26 @@
 #!/bin/sh
 # configure.win -- Windows counterpart of ./configure (run by R via the Rtools
-# sh). Vendors the native host sources and reports CUDA availability. CPU-only by
-# default; nvcc + the Visual Studio toolchain enable the GPU path (see Makevars).
+# sh). src/ carries copies of the engine's CPU sources; inside the monorepo they
+# are refreshed from ../native/ (the source of truth), normalised to LF.
 set -e
 SRC=src
 NATIVE=""
 for d in ../native ../../native; do
   if [ -f "$d/libcusna_saom_cpu.cpp" ]; then NATIVE="$d"; break; fi
 done
-if [ ! -f "$SRC/libcusna_saom_cpu.cpp" ]; then
-  if [ -n "$NATIVE" ]; then
-    echo "cusna: vendoring native sources from $NATIVE (normalising to LF)"
-    tr -d '\r' < "$NATIVE/libcusna.h" > "$SRC/libcusna.h"
-    tr -d '\r' < "$NATIVE/libcusna_saom_cpu.cpp" > "$SRC/libcusna_saom_cpu.cpp"
-    tr -d '\r' < "$NATIVE/libcusna_ergm_cpu.cpp" > "$SRC/libcusna_ergm_cpu.cpp"
-  else
-    echo "cusna: ERROR -- native sources not found; vendor them before building." >&2
-    exit 1
-  fi
+if [ -n "$NATIVE" ]; then
+  for f in libcusna.h libcusna_saom_cpu.cpp libcusna_ergm_cpu.cpp; do
+    tr -d '\r' < "$NATIVE/$f" > "$SRC/$f.tmp"
+    if [ -f "$SRC/$f" ] && cmp -s "$SRC/$f.tmp" "$SRC/$f"; then
+      rm -f "$SRC/$f.tmp"
+    else
+      mv "$SRC/$f.tmp" "$SRC/$f"
+      echo "cusna: refreshed src/$f from $NATIVE"
+    fi
+  done
+elif [ ! -f "$SRC/libcusna_saom_cpu.cpp" ]; then
+  echo "cusna: ERROR -- native sources not found in src/ or ../native/." >&2
+  exit 1
 fi
-if command -v nvcc >/dev/null 2>&1; then
-  echo "cusna: nvcc detected -- a GPU build is possible (see src/Makevars.win notes)."
-else
-  echo "cusna: no nvcc on PATH -- building CPU-only (the CRAN default)."
-fi
+echo "cusna: building the CPU backend (C++17, OpenMP where available)."
 exit 0

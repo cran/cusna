@@ -19,3 +19,10 @@ Wrapper over the native \code{cusna_gof_distribution} (port of \code{gof.py}):
 cumulative indegree/outdegree actor counts, or geodesic-distance ordered-pair
 counts for a batch of simulated end networks.
 }
+\examples{
+# Cumulative indegree counts and geodesic-distance pair counts of the three
+# observed s50 waves, treated as a batch of three networks.
+a <- aperm(simplify2array(s50$waves), c(3, 1, 2))   # 3 x 50 x 50
+cusna_gof_distribution(a, kind = 0L, levls = 0:6)
+cusna_gof_distribution(a, kind = 2L, levls = 1:5)
+}

@@ -90,10 +90,10 @@ extern "C" SEXP _cusna_cusna_alaam_gibbs_cpu_(SEXP a, SEXP n, SEXP directed, SEX
   END_CPP11
 }
 // cusna_glue.cpp
-doubles cusna_ergm_sim_masked_cpu_(integers a, integers permitted, int n, int k, int directed, doubles theta, integers type_ids, doubles parm, doubles attr, int C, double seed, int burnin, int interval, int samplesize);
-extern "C" SEXP _cusna_cusna_ergm_sim_masked_cpu_(SEXP a, SEXP permitted, SEXP n, SEXP k, SEXP directed, SEXP theta, SEXP type_ids, SEXP parm, SEXP attr, SEXP C, SEXP seed, SEXP burnin, SEXP interval, SEXP samplesize) {
+SEXP cusna_ergm_sim_masked_cpu_(integers a, integers permitted, int n, int k, int directed, doubles theta, integers type_ids, doubles parm, doubles attr, int C, double seed, int burnin, int interval, int samplesize, int return_nets);
+extern "C" SEXP _cusna_cusna_ergm_sim_masked_cpu_(SEXP a, SEXP permitted, SEXP n, SEXP k, SEXP directed, SEXP theta, SEXP type_ids, SEXP parm, SEXP attr, SEXP C, SEXP seed, SEXP burnin, SEXP interval, SEXP samplesize, SEXP return_nets) {
   BEGIN_CPP11
-    return cpp11::as_sexp(cusna_ergm_sim_masked_cpu_(cpp11::as_cpp<cpp11::decay_t<integers>>(a), cpp11::as_cpp<cpp11::decay_t<integers>>(permitted), cpp11::as_cpp<cpp11::decay_t<int>>(n), cpp11::as_cpp<cpp11::decay_t<int>>(k), cpp11::as_cpp<cpp11::decay_t<int>>(directed), cpp11::as_cpp<cpp11::decay_t<doubles>>(theta), cpp11::as_cpp<cpp11::decay_t<integers>>(type_ids), cpp11::as_cpp<cpp11::decay_t<doubles>>(parm), cpp11::as_cpp<cpp11::decay_t<doubles>>(attr), cpp11::as_cpp<cpp11::decay_t<int>>(C), cpp11::as_cpp<cpp11::decay_t<double>>(seed), cpp11::as_cpp<cpp11::decay_t<int>>(burnin), cpp11::as_cpp<cpp11::decay_t<int>>(interval), cpp11::as_cpp<cpp11::decay_t<int>>(samplesize)));
+    return cpp11::as_sexp(cusna_ergm_sim_masked_cpu_(cpp11::as_cpp<cpp11::decay_t<integers>>(a), cpp11::as_cpp<cpp11::decay_t<integers>>(permitted), cpp11::as_cpp<cpp11::decay_t<int>>(n), cpp11::as_cpp<cpp11::decay_t<int>>(k), cpp11::as_cpp<cpp11::decay_t<int>>(directed), cpp11::as_cpp<cpp11::decay_t<doubles>>(theta), cpp11::as_cpp<cpp11::decay_t<integers>>(type_ids), cpp11::as_cpp<cpp11::decay_t<doubles>>(parm), cpp11::as_cpp<cpp11::decay_t<doubles>>(attr), cpp11::as_cpp<cpp11::decay_t<int>>(C), cpp11::as_cpp<cpp11::decay_t<double>>(seed), cpp11::as_cpp<cpp11::decay_t<int>>(burnin), cpp11::as_cpp<cpp11::decay_t<int>>(interval), cpp11::as_cpp<cpp11::decay_t<int>>(samplesize), cpp11::as_cpp<cpp11::decay_t<int>>(return_nets)));
   END_CPP11
 }
 // cusna_saom_glue.cpp
@@ -133,7 +133,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_cusna_cusna_behavior_stats_",      (DL_FUNC) &_cusna_cusna_behavior_stats_,      10},
     {"_cusna_cusna_cross_stats_",         (DL_FUNC) &_cusna_cusna_cross_stats_,          6},
     {"_cusna_cusna_ergm_mple_",           (DL_FUNC) &_cusna_cusna_ergm_mple_,            2},
-    {"_cusna_cusna_ergm_sim_masked_cpu_", (DL_FUNC) &_cusna_cusna_ergm_sim_masked_cpu_, 14},
+    {"_cusna_cusna_ergm_sim_masked_cpu_", (DL_FUNC) &_cusna_cusna_ergm_sim_masked_cpu_, 15},
     {"_cusna_cusna_ergm_simulate_cpu_",   (DL_FUNC) &_cusna_cusna_ergm_simulate_cpu_,   14},
     {"_cusna_cusna_ergm_stats_",          (DL_FUNC) &_cusna_cusna_ergm_stats_,           7},
     {"_cusna_cusna_ergm_tsim_cpu_",       (DL_FUNC) &_cusna_cusna_ergm_tsim_cpu_,       16},

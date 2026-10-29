@@ -86,8 +86,10 @@
 .rm2 <- function(m) as.vector(t(as.matrix(m)))
 
 # One period, M chains, via the native simulator; returns the pieces the loop
-# accumulates (network stats/scores, behavior dist/scores/stats, ntim).
-.run_period_sim <- function(est, pp, lam, th, M, seed, lamb = 0, thb = numeric(0)) {
+# accumulates (network stats/scores, behavior dist/scores/stats, ntim) and, with
+# keep_nets, the end networks (M x n x n) and end behavior (M x n).
+.run_period_sim <- function(est, pp, lam, th, M, seed, lamb = 0, thb = numeric(0),
+                            keep_nets = FALSE) {
   d <- est$per[[pp]]; n <- est$n; k <- est$k; kb <- est$kb
   beh <- est$beh
   tgt <- if (est$conditional) as.integer(est$dists[pp]) else 0L
@@ -101,7 +103,7 @@
     if (kb > 0) d$z0 else integer(0), if (kb > 0) d$bkdist else integer(0),
     if (kb > 0) beh$zmin else 0L, if (kb > 0) beh$zmax else 0L,
     if (kb > 0) beh$overall_mean else 0, if (kb > 0) beh$range else 0,
-    if (kb > 0) beh$sim_mean else 0, 0L)
+    if (kb > 0) beh$sim_mean else 0, if (keep_nets) 1L else 0L)
   stats <- matrix(r$stats, M, k, byrow = TRUE)
   scores <- matrix(r$scores, M, k + 1L, byrow = TRUE)
   out <- list(stats = stats, scores = scores, ntim = r$ntim,
@@ -113,12 +115,18 @@
     out$bstats <- bstats
     out$bdist <- r$bdist
     out$bscores <- matrix(r$bscores, M, kb + 1L, byrow = TRUE)
+    if (keep_nets) out$z_end <- z_end
+  }
+  if (keep_nets) {
+    # a_ends is row-major over (chain, i, j); chains first, as cusna_gof_distribution() takes
+    out$nets <- aperm(array(r$a_ends, c(n, n, M)), c(3L, 2L, 1L))
   }
   out
 }
 
-# Simulate all periods; returns (stats M x p, pieces list of (sp,scp), ntim M x P).
-.mom_simulate <- function(est, theta, M) {
+# Simulate all periods; returns (stats M x p, pieces list of (sp,scp), ntim M x P)
+# and, with keep_nets, the per-period end networks (and end behavior).
+.mom_simulate <- function(est, theta, M, keep_nets = FALSE) {
   P <- est$P; p <- est$p; k <- est$k; kb <- est$kb
   if (est$coevol) {
     lam <- theta[1:P]; lamb <- theta[(P + 1):(2 * P)]
@@ -130,11 +138,17 @@
   }
   stats_acc <- matrix(0, M, p); pieces <- vector("list", P)
   ntim <- matrix(0, M, P)
+  nets <- if (keep_nets) vector("list", P) else NULL
+  z_ends <- if (keep_nets && est$coevol) vector("list", P) else NULL
   for (pp in seq_len(P)) {
     seed <- sample.int(.Machine$integer.max, 1L)
     r <- .run_period_sim(est, pp, as.numeric(lam[pp]), th, M, seed,
                          lamb = if (est$coevol) as.numeric(lamb[pp]) else 0,
-                         thb = thb)
+                         thb = thb, keep_nets = keep_nets)
+    if (keep_nets) {
+      nets[[pp]] <- r$nets
+      if (est$coevol) z_ends[[pp]] <- r$z_end
+    }
     sp <- matrix(0, M, p); scp <- matrix(0, M, p)
     if (!est$conditional) {
       sp[, pp] <- r$dist_stat + est$rate_consts[pp]
@@ -152,7 +166,7 @@
     stats_acc <- stats_acc + sp
     pieces[[pp]] <- list(sp = sp, scp = scp)
   }
-  list(stats = stats_acc, pieces = pieces, ntim = ntim)
+  list(stats = stats_acc, pieces = pieces, ntim = ntim, nets = nets, z_ends = z_ends)
 }
 
 # Score-function derivative, summed per period (derivativeFromScoresAndDeviations).
@@ -196,8 +210,10 @@
   c(lam0, numeric(est$R), ev0)
 }
 
-# Run the Robbins-Monro loop; returns the fit list (theta/se/tconv/D/msf/...).
-.mom_run <- function(est, theta0 = NULL, verbose = FALSE, backend = "cpu") {
+# Run the Robbins-Monro loop; returns the fit list (theta/se/tconv/D/msf/...),
+# plus the phase-3 end networks when return_nets (RSiena's returnDeps).
+.mom_run <- function(est, theta0 = NULL, verbose = FALSE, backend = "cpu",
+                     return_nets = FALSE) {
   ctl <- est$control
   t0 <- Sys.time()
   n_sims <- ctl$n1 + ctl$n3 +
@@ -232,7 +248,7 @@
   }
 
   # phase 3
-  s <- .mom_simulate(est, theta, ctl$n3)
+  s <- .mom_simulate(est, theta, ctl$n3, keep_nets = return_nets)
   D <- .mom_derivative(s$pieces); dinv <- .safe_solve(D)
   msf <- stats::cov(s$stats)
   dev_mean <- colMeans(s$stats) - est$targets
@@ -248,7 +264,8 @@
        conditional = est$conditional, rate_est = rate_est,
        rate_sd = if (est$conditional) apply(s$ntim, 2, stats::sd) else NULL,
        n_sims = as.integer(n_sims), backend = backend,
-       wall_time = as.numeric(difftime(Sys.time(), t0, units = "secs")))
+       wall_time = as.numeric(difftime(Sys.time(), t0, units = "secs")),
+       sims = s$nets, sims_behavior = s$z_ends)
 }
 
 # =============================================================================

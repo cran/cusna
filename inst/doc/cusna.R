@@ -46,7 +46,7 @@ summary(fit)          # RSiena-style table (rates, estimates, s.e., t-conv)
 coef(fit)             # named parameter vector
 round(vcov(fit), 4)   # delta-method covariance
 
-dat <- saom_data(list(w1, w2, w3), behavior = drink)   # drink: n-by-waves
+dat <- saom_data(s50$waves, behavior = s50$alcohol)    # the bundled s50 panel
 
 fit <- mom_estimate(
   dat,
@@ -57,6 +57,17 @@ fit <- mom_estimate(
   beh_effects = list(cusna_beh_effect("linear"), cusna_beh_effect("quad"),
                      cusna_beh_effect("avSim")),
   conditional = FALSE)
+
+fit_gof <- mom_estimate(
+  dat,
+  effects = list(cusna_effect("density"), cusna_effect("recip")),
+  conditional = TRUE, return_nets = TRUE,
+  control = mom_control(n1 = 100, nsub = 1, n2 = 10, batch2 = 50, n3 = 200))
+sims <- fit_gof$sims[[2]]                       # period 2 ends at wave 3
+dim(sims)
+sim_indeg <- cusna_gof_distribution(sims, kind = 0L, levls = 0:4)
+obs_indeg <- cusna_gof_distribution(array(w3, c(1, n, n)), kind = 0L, levls = 0:4)
+rbind(observed = obs_indeg[1, ], simulated = colMeans(sim_indeg))
 
 str(mom_control())
 

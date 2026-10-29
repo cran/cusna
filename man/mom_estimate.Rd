@@ -5,7 +5,7 @@
 \usage{
 mom_estimate(data, effects, beh_effects = NULL, rate_effects = NULL,
              conditional = FALSE, backend = c("cpu", "gpu"), maxdegree = 0,
-             control = mom_control(), verbose = FALSE)
+             control = mom_control(), verbose = FALSE, return_nets = FALSE)
 
 mom_control(firstg = 0.4, nsub = 4, n2 = c(40, 40, 60, 80),
             batch2 = 256, n1 = 1000, n3 = 4000, nD = 1000,
@@ -30,6 +30,14 @@ mom_control(firstg = 0.4, nsub = 4, n2 = c(40, 40, 60, 80),
 \item{maxdegree}{optional maximum out-degree constraint (0 = none).}
 \item{control}{a list of tuning parameters from \code{mom_control}.}
 \item{verbose}{logical; if \code{TRUE}, print per-phase progress.}
+\item{return_nets}{logical; if \code{TRUE}, keep the end networks of the
+  phase-3 simulations (RSiena's \code{returnDeps}) in the returned fit as
+  \code{sims}: a list with one integer array of dimension
+  \code{c(n3, n, n)} per period (chains first, the layout
+  \code{\link{cusna_gof_distribution}} takes). Co-evolution fits also return
+  the simulated behavior as \code{sims_behavior} (one \code{n3 x n} matrix
+  per period). The arrays hold \code{n3 * n^2} integers per period, so
+  choose \code{n3} accordingly.}
 \item{firstg}{initial Robbins--Monro gain.}
 \item{nsub}{number of phase-2 subphases.}
 \item{n2}{integer vector (length \code{>= nsub}) of phase-2 iteration counts
@@ -56,27 +64,42 @@ simulation standard errors.
 }
 \details{
 For nearly collinear specifications the Robbins--Monro estimator may not
-converge from a cold start; increase \code{diagonalize} or the phase counts.
-The estimator currently drives the CPU simulator; the CUDA path of the engine
-is exposed through the lower-level statistics entry points.
+converge from a cold start; increase \code{diagonalize} or the phase counts,
+or run \pkg{RSiena}'s own estimator on the native simulator with
+\code{\link{cusna_fran}}.
+
+The default schedule (65,320 simulated panels) is deliberately larger than
+\pkg{RSiena}'s default, which gives phase-3 standard errors and convergence
+ratios with less Monte Carlo error; on the CPU build a smaller schedule (for
+example \code{n3 = 1000}) finishes correspondingly faster. The estimator
+drives the CPU backend of the engine; \code{backend = "gpu"} is reserved for
+a build that links the CUDA backend.
+
+The simulated end networks returned with \code{return_nets = TRUE} are the
+states at the end of each period (in conditional estimation, when the
+observed distance is reached), before the statistic masks for missing,
+structural and composition-change ties are applied.
 }
 \seealso{
 \code{\link{cusna_fit}}, \code{\link{cusna_effect}}, \code{\link{saom_data}},
 \code{\link{mom_estimate_multinet}}, \code{\link{cusna_fran}}.
 }
 \examples{
+# The s50 panel: three waves of friendship among 50 girls.
+dat <- saom_data(s50$waves)
+effects <- list(cusna_effect("density"), cusna_effect("recip"),
+                cusna_effect("transTrip"))
 \donttest{
-# A small two-wave panel; tiny simulation counts keep the example fast.
-set.seed(7)
-w1 <- matrix(as.integer(runif(400) < 0.12), 20, 20); diag(w1) <- 0L
-w2 <- w1; flip <- sample(400, 40); w2[flip] <- 1L - w2[flip]; diag(w2) <- 0L
-dat <- saom_data(list(w1, w2))
-
-fit <- mom_estimate(
-  dat,
-  effects = list(cusna_effect("density"), cusna_effect("recip")),
-  control = mom_control(n1 = 100, nsub = 1, n2 = 10, batch2 = 50, n3 = 200))
+# A short schedule keeps the example quick; use the defaults in practice.
+ctl <- mom_control(n1 = 200, nsub = 2, n2 = c(10, 10), batch2 = 50,
+                   nD = 200, n3 = 300, seed = 1)
+fit <- mom_estimate(dat, effects, conditional = TRUE, control = ctl,
+                    return_nets = TRUE)
 summary(fit)
-coef(fit)
+
+# The phase-3 networks: indegree distribution of the simulated third wave.
+dim(fit$sims[[2]])
+indeg <- cusna_gof_distribution(fit$sims[[2]], kind = 0L, levls = 0:6)
+colMeans(indeg)
 }
 }

@@ -2,12 +2,13 @@
 \alias{cusna-package}
 \alias{cusna}
 \docType{package}
-\title{cusna: native GPU-accelerated stochastic actor-oriented models}
+\title{cusna: native simulation and estimation of network models}
 \description{
-A self-contained native engine (C ABI over CUDA kernels and C++ host logic) for
-SAOM/RSiena and ERGM, callable from R without a Python runtime. Modelled on the
-\pkg{torch} package: the CRAN build is CPU-only from source, and the GPU path is
-compiled from source when a CUDA toolkit is detected at configure time.
+A self-contained native engine (a C interface over C++ host logic) for
+SAOM/RSiena and ERGM, callable from R without a Python runtime. The package
+builds the CPU backend of the engine (C++17, multi-threaded with OpenMP; see
+\code{\link{cusna_set_threads}}); a CUDA backend implements the same interface
+and is built separately from source.
 }
 \details{
 The package covers four model families, all on the same compiled engine:
@@ -36,4 +37,7 @@ The validated host statistics -- the RSiena Appendix B convention carriers
 (\code{\link{cusna_network_stats}}, \code{\link{cusna_behavior_stats}},
 \code{\link{cusna_gof_distribution}}) -- reproduce RSiena targets on public
 datasets to machine precision and remain available as low-level entry points.
+
+The \code{\link{s50}} panel (three waves of friendship among 50 girls, with
+alcohol use) is included for the examples.
 }

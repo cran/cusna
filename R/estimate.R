@@ -59,17 +59,23 @@ mom_control <- function(firstg = 0.4, nsub = 4, n2 = c(40, 40, 60, 80),
 #' @param maxdegree Optional out-degree bound (0 = none).
 #' @param control A [mom_control] list.
 #' @param verbose Print the parameter trace per phase.
+#' @param return_nets Keep the phase-3 end networks (RSiena's `returnDeps`) in
+#'   `fit$sims`: one `n3 x n x n` integer array per period.
 #' @return A `cusna_fit` object.
 #' @export
 mom_estimate <- function(data, effects, beh_effects = NULL, rate_effects = NULL,
                          conditional = FALSE, backend = c("cpu", "gpu"),
-                         maxdegree = 0, control = mom_control(), verbose = FALSE) {
+                         maxdegree = 0, control = mom_control(), verbose = FALSE,
+                         return_nets = FALSE) {
   backend <- match.arg(backend)
   if (!inherits(data, "cusna_data")) {
     stop("`data` must be created with saom_data().", call. = FALSE)
   }
   if (!is.list(effects) || !length(effects)) {
     stop("`effects` must be a non-empty list of cusna_effect objects.", call. = FALSE)
+  }
+  if (!is.logical(return_nets) || length(return_nets) != 1L || is.na(return_nets)) {
+    stop("`return_nets` must be TRUE or FALSE.", call. = FALSE)
   }
   if (backend == "gpu" && !cusna_has_cuda()) {
     stop("the 'gpu' backend needs a CUDA build of cusna; use backend = 'cpu'.",
@@ -87,7 +93,8 @@ mom_estimate <- function(data, effects, beh_effects = NULL, rate_effects = NULL,
   ctl <- unclass(control); ctl$maxdegree <- as.integer(maxdegree)
   est <- .mom_estimator(data$internal, specs, beh_effects = bspecs,
                         rate_effects = rspecs, conditional = conditional, control = ctl)
-  new_cusna_fit(.mom_run(est, verbose = verbose, backend = backend))
+  new_cusna_fit(.mom_run(est, verbose = verbose, backend = backend,
+                         return_nets = return_nets))
 }
 
 # Assemble the R-native fit object from the engine result.
@@ -106,7 +113,8 @@ new_cusna_fit <- function(res) {
     rates = rates, tconv_max = as.numeric(res$tconv_max), n_sims = as.integer(res$n_sims),
     wall_time = as.numeric(res$wall_time), backend = as.character(res$backend),
     conditional = isTRUE(res$conditional), targets = as.numeric(res$targets),
-    sim_means = as.numeric(res$sim_means), D = res$D, msf = res$msf),
+    sim_means = as.numeric(res$sim_means), D = res$D, msf = res$msf,
+    sims = res$sims, sims_behavior = res$sims_behavior),
     class = "cusna_fit")
 }
 
@@ -120,6 +128,11 @@ print.cusna_fit <- function(x, ...) {
   print(est, row.names = FALSE)
   cat(sprintf("overall max. convergence ratio: %.4f\n%d simulations, %.2fs\n",
               x$tconv_max, x$n_sims, x$wall_time))
+  if (!is.null(x$sims)) {
+    cat(sprintf("phase-3 networks kept: %d period%s x %d chains (fit$sims)\n",
+                length(x$sims), if (length(x$sims) == 1L) "" else "s",
+                dim(x$sims[[1]])[1]))
+  }
   invisible(x)
 }
 

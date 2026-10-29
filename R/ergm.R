@@ -742,7 +742,7 @@ print.alaam_mcmle <- function(x, ...) {
         as.integer(.rowmajor(b$x0)), as.integer(.rowmajor(b$permitted)), n, k,
         as.integer(directed), as.double(theta), ts$ids, ts$parm, as.double(b$attr),
         as.integer(nsim), as.double(seed + 1000L * it + bi),
-        as.integer(burnin), as.integer(interval), 1L)
+        as.integer(burnin), as.integer(interval), 1L, 0L)
       G <- matrix(flat, nrow = nsim, ncol = k, byrow = TRUE)
       means[bi, ] <- colMeans(G)
       Sig <- Sig + stats::cov(G)                 # summed Fisher info (independent)
@@ -771,6 +771,29 @@ print.alaam_mcmle <- function(x, ...) {
        obs = stats::setNames(as.numeric(gobs), ts$names))
 }
 
+# build one constrained (x0, permitted) block for a single transition Ylag -> Yt.
+# THE single source of the discord-constrained space shared by the CMLE fit and
+# stergm_simulate, so the two are bit-consistent:
+#   formation   x0 = Ylag | Yt  (union),        free = dyads absent  at t-1;
+#   dissolution x0 = Ylag & Yt  (intersection), free = dyads present at t-1.
+# In simulation there is no Y^t; the caller passes Yt = Ylag, which reduces x0 to
+# Ylag on every dyad -- i.e. the fixed (non-free) dyads are held at exactly the
+# value the fit fixes them to (present at t-1 for formation, absent for
+# dissolution), and the free dyads simply start from the lagged state.
+.stergm_block <- function(Ylag, Yt, phase) {
+  Ylag <- (Ylag != 0) * 1L
+  Yt   <- (Yt   != 0) * 1L
+  if (phase == "formation") {
+    x0 <- ((Ylag | Yt) != 0) * 1L               # union
+    permitted <- (Ylag == 0) * 1L               # free = absent at t-1
+  } else {
+    x0 <- (Ylag & Yt) * 1L                       # intersection (persistence)
+    permitted <- (Ylag != 0) * 1L               # free = present at t-1
+  }
+  diag(x0) <- 0L; diag(permitted) <- 0L
+  list(x0 = x0, permitted = permitted)
+}
+
 # build the constrained networks, observed statistics and a seed for one phase
 .stergm_phase_setup <- function(nets, terms, phase, attr, directed) {
   ts <- .ergm_terms_split(terms)
@@ -780,14 +803,8 @@ print.alaam_mcmle <- function(x, ...) {
   for (t in 2:length(nets)) {
     Ylag <- (nets[[t - 1]] != 0) * 1L
     Yt   <- (nets[[t]] != 0) * 1L
-    if (phase == "formation") {
-      x0 <- ((Ylag | Yt) != 0) * 1L               # union
-      permitted <- (Ylag == 0) * 1L               # free = absent at t-1
-    } else {
-      x0 <- (Ylag & Yt) * 1L                       # intersection (persistence)
-      permitted <- (Ylag != 0) * 1L               # free = present at t-1
-    }
-    diag(x0) <- 0L; diag(permitted) <- 0L
+    blk <- .stergm_block(Ylag, Yt, phase)
+    x0 <- blk$x0; permitted <- blk$permitted
     s0 <- ergm_stats(x0, terms, attr = attr, directed = directed)
     gobs <- gobs + as.numeric(s0)
     fr <- permitted == 1L; diag(fr) <- FALSE
@@ -876,4 +893,96 @@ print.stergm_cmle <- function(x, ...) {
   fmt(x$formation, "Formation")
   fmt(x$dissolution, "Dissolution (persistence)")
   invisible(x)
+}
+
+# draw nsim constrained networks from one separable phase: the masked TNT sampler
+# on the (x0, permitted) block for `phase` (built by the shared .stergm_block, so
+# simulation and the CMLE fit share one discord-constrained space). Returns a list
+# of nsim n*n 0/1 matrices and the nsim x k statistics matrix (both on the
+# constrained space). `coef` / `terms` parameterise the phase ERGM.
+.stergm_sim_phase <- function(y_lag, terms, coef, phase, attr, directed,
+                              nsim, burnin, interval, seed) {
+  ts <- .ergm_terms_split(terms)
+  k <- length(ts$ids); n <- nrow(y_lag)
+  if (length(coef) != k) {
+    stop("`coef_", phase, "` must have one value per ", phase, " term.",
+         call. = FALSE)
+  }
+  blk <- .stergm_block(y_lag, y_lag, phase)      # Yt = Ylag: x0 = y_lag, held fixed
+  av <- if (is.null(attr)) numeric(0) else as.double(attr)
+  res <- cusna_ergm_sim_masked_cpu_(
+    as.integer(.rowmajor(blk$x0)), as.integer(.rowmajor(blk$permitted)), n, k,
+    as.integer(directed), as.double(coef), ts$ids, ts$parm, av,
+    as.integer(nsim), as.double(seed), as.integer(burnin), as.integer(interval),
+    1L, 1L)
+  m <- matrix(res$stats, nrow = nsim, ncol = k, byrow = TRUE)
+  colnames(m) <- ts$names
+  list(stats = m, nets = .ergm_unpack_nets(res$nets, nsim, n), permitted = blk$permitted)
+}
+
+#' Simulate a STERGM transition \eqn{Y^t \mid Y^{t-1}} (constrained draw)
+#'
+#' Draws `nsim` networks from a separable temporal ERGM (Krivitsky & Handcock
+#' 2014) given the previous wave, the simulation counterpart of
+#' \code{\link{stergm_cmle}}. The transition separates into two conditionally
+#' independent constrained ERGMs, sampled with the native masked TNT sampler on
+#' exactly the discord-constrained space the fit uses (the shared block builder):
+#' a *formation* draw \eqn{F \sim} ERGM(`coef_formation`) on \eqn{\{y \supseteq
+#' y_{lag}\}} (only dyads absent at \eqn{t-1} toggle) and a *dissolution* draw
+#' \eqn{D \sim} ERGM(`coef_dissolution`) on \eqn{\{y \subseteq y_{lag}\}}
+#' (persistence parameterisation, only dyads present at \eqn{t-1} toggle). The two
+#' draws are independent (separate seed streams, `seed` and `seed + 500000L`, as
+#' in the fit) and composed into \eqn{y^t = (F \setminus y_{lag}) \cup D}: newly
+#' formed ties where none existed, plus surviving ties where one did. Python-free
+#' (CPU engine).
+#'
+#' @param y_lag Integer/logical n*n lagged network \eqn{Y^{t-1}} (0/1, zero
+#'   diagonal).
+#' @param formation A non-empty list of [ergm_term()] objects for the formation
+#'   model.
+#' @param dissolution A list of [ergm_term()] objects for the dissolution
+#'   (persistence) model; defaults to the formation terms.
+#' @param coef_formation Numeric formation parameters, one per formation term.
+#' @param coef_dissolution Numeric dissolution parameters, one per dissolution
+#'   term.
+#' @param attr Optional numeric node covariate of length n (for
+#'   nodecov/nodematch/absdiff); `NULL` for none.
+#' @param directed Logical: are the networks directed?
+#' @param nsim Number of independent transition draws.
+#' @param burnin,interval MCMC schedule per chain (default burn-in scales with
+#'   the dyad count).
+#' @param seed Integer RNG seed (dissolution uses `seed + 500000L`).
+#' @return A list with `stats_formation` (a `nsim` x k matrix of the formation
+#'   sufficient statistics on the union space), `stats_dissolution` (the same for
+#'   the dissolution/persistence space) and `nets` (a list of `nsim` n*n integer
+#'   adjacency matrices, the composed \eqn{Y^t}).
+#' @export
+stergm_simulate <- function(y_lag, formation, dissolution = formation,
+                            coef_formation, coef_dissolution, attr = NULL,
+                            directed = TRUE, nsim = 100, burnin = NULL,
+                            interval = 1024L, seed = 1234L) {
+  y_lag <- (y_lag != 0) * 1L
+  n <- nrow(y_lag)
+  ndyads <- if (directed) n * (n - 1) else n * (n - 1) / 2
+  if (is.null(burnin)) burnin <- as.integer(max(4096, 2 * ndyads))
+
+  fsim <- .stergm_sim_phase(y_lag, formation, coef_formation, "formation", attr,
+                            directed, nsim, burnin, interval, seed)
+  dsim <- .stergm_sim_phase(y_lag, dissolution, coef_dissolution, "dissolution",
+                            attr, directed, nsim, burnin, interval,
+                            seed + 500000L)
+
+  free_form <- y_lag == 0L                        # formation-free dyads (absent)
+  free_diss <- y_lag == 1L                        # dissolution-free dyads (present)
+  nets <- lapply(seq_len(nsim), function(i) {
+    Fi <- fsim$nets[[i]]; Di <- dsim$nets[[i]]
+    # y_t = (F \ y_lag) union D : new ties where absent at t-1 (from F), surviving
+    # ties where present at t-1 (from D). The two sets are disjoint by construction.
+    yt <- matrix(0L, n, n)
+    yt[free_form] <- Fi[free_form]
+    yt[free_diss] <- Di[free_diss]
+    diag(yt) <- 0L
+    yt
+  })
+  list(stats_formation = fsim$stats, stats_dissolution = dsim$stats, nets = nets)
 }

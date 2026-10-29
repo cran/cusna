@@ -18,40 +18,55 @@ This is a useful path for hard, nearly collinear specifications, where a
 standalone method-of-moments run may not converge from a cold start: RSiena
 supplies convergence, cusna supplies speed.
 
-The code below is shown but not run here (it needs the RSiena package).
+```{r, include = FALSE}
+# CRAN's two-core policy: run the OpenMP engine single-threaded here.
+library(cusna)
+old_threads <- cusna_set_threads(1L)
+have_rsiena <- requireNamespace("RSiena", quietly = TRUE)
+```
+
+The chunks below run when RSiena is installed (it is a suggested package).
 
 ## The FRAN hook
 
 RSiena's `siena07()` calls a simulation function named `FRAN` once per
 Robbins--Monro iteration. If `alg$FRAN` is a function, RSiena uses it
-directly. `cusna_fran()` builds such a function over the native simulator:
+directly. `cusna_fran()` builds such a function over the native simulator.
+Here it estimates the s50 friendship panel shipped with cusna:
 
-```{r, eval=FALSE}
-library(cusna)
+```{r, eval = have_rsiena}
 library(RSiena)
 
-# ... assemble `dat` (sienaData) and `eff` (sienaEffects) as usual ...
+net <- sienaDependent(array(unlist(s50$waves), dim = c(50, 50, 3)))
+dat <- sienaDataCreate(net)
+eff <- includeEffects(getEffects(dat), transTrip)
 
-alg <- sienaAlgorithmCreate(projname = NULL, cond = FALSE)
-
+alg <- sienaAlgorithmCreate(projname = NULL, nsub = 2, n3 = 300, seed = 2026)
 alg$FRAN <- cusna_fran(
-  waves        = list(w1, w2, w3),                  # the same 0/1 wave matrices
+  waves        = s50$waves,                         # the same 0/1 wave matrices
   effect_names = c("density", "recip", "transTrip"),# in the RSiena effects order
-  conditional  = FALSE)                             # must match `cond`
+  conditional  = TRUE)                              # must match `cond`
 
-ans <- siena07(alg, data = dat, effects = eff, useCluster = FALSE)
-ans   # a normal sienaFit: estimates, standard errors, convergence as usual
+ans <- siena07(alg, data = dat, effects = eff, batch = TRUE,
+               verbose = FALSE, silent = TRUE, useCluster = FALSE)
+ans                              # a normal sienaFit
+attr(alg$FRAN, "counter")$i      # simulation calls made by siena07()
 ```
 
-The `effect_names` must list the included effects in the same order as the
-rows of the RSiena effects object, and `conditional` must match the
-algorithm's `cond` setting. Covariate effects (`egoX`/`altX`/`simX`/`sameX`)
-read the `covariate` argument.
+(The short `nsub`/`n3` keep this vignette quick; use RSiena's defaults in
+practice.) The `effect_names` must list the included effects in the same
+order as the rows of the RSiena effects object, and `conditional` must match
+the algorithm's `cond` setting (RSiena conditions on the observed distances
+by default for a single network); the closure stops with an explanatory
+error when the parameter vector does not match. Covariate effects
+(`egoX`/`altX`/`simX`/`sameX`) read the `covariate` argument. Simulation
+seeds come from R's random number stream, which `siena07()` initialises from
+the algorithm's `seed`, so the run above is reproducible.
 
 ## Scope
 
-* The closure simulates on the compiled native engine (CPU in the CRAN
-  build) --- no Python, no GPU required.
+* The closure simulates on the compiled native engine (its CPU backend in
+  the R package) --- no Python, no GPU required.
 * One simulation is produced per call, matching RSiena's `simstats0c`
   contract; batching happens across Robbins--Monro iterations, not within a
   call.
@@ -59,6 +74,9 @@ read the `covariate` argument.
   in `effect_names`; mapping an arbitrary `siena07` effects object (multiple
   covariates, behavior co-evolution) onto the native descriptors is under
   development. For those models, use the standalone `mom_estimate()`.
+* Simulated networks are not handed back to RSiena (`returnDeps`); for
+  goodness of fit on the native engine, use
+  `mom_estimate(..., return_nets = TRUE)`.
 
 ## Which path to choose
 
@@ -68,3 +86,7 @@ read the `covariate` argument.
 | Nearly collinear / hard convergence | `cusna_fran()` + `siena07()` |
 | Need RSiena's exact estimator semantics | `cusna_fran()` + `siena07()` |
 | Behavior co-evolution, multi-network | standalone `mom_estimate()` / `mom_estimate_multinet()` |
+
+```{r, include = FALSE}
+cusna_set_threads(old_threads)
+```
